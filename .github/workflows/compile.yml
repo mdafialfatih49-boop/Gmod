@@ -1,0 +1,78 @@
+
+name: Compile GM Zen Bowls Map
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Wine and Dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y wine wine32 wine64 unzip wget
+
+      - name: Download Source SDK 2013 Tools
+        run: |
+          mkdir -p tools
+          echo "Prepare Source SDK 2013 compiler tools"
+          echo "VBSP, VVIS and VRAD are required."
+
+      - name: Locate VMF Map
+        run: |
+          VMF=$(find . -name "gm_zen_bowls.vmf" | head -n 1)
+          if [ -z "$VMF" ]; then
+            echo "ERROR: gm_zen_bowls.vmf not found!"
+            exit 1
+          fi
+          echo "VMF_PATH=$VMF" >> $GITHUB_ENV
+          echo "Found map: $VMF"
+
+      - name: Check Compiler Tools
+        run: |
+          if [ ! -f "tools/bin/vbsp.exe" ]; then
+            echo "ERROR: VBSP compiler missing!"
+            echo "Place Source SDK compiler tools in tools/bin/"
+            exit 1
+          fi
+
+      - name: Compile BSP
+        run: |
+          mkdir -p output
+          wine tools/bin/vbsp.exe \
+            -game "$PWD" \
+            -threads 2 \
+            "$PWD/$VMF_PATH"
+
+      - name: Compile VIS
+        run: |
+          wine tools/bin/vvis.exe \
+            -game "$PWD" \
+            -threads 2 \
+            "$PWD/gm_zen_bowls.bsp"
+
+      - name: Compile RAD
+        run: |
+          wine tools/bin/vrad.exe \
+            -game "$PWD" \
+            -threads 2 \
+            "$PWD/gm_zen_bowls.bsp"
+
+      - name: Move Compiled Map
+        run: |
+          mkdir -p output
+          find . -name "gm_zen_bowls.bsp" -exec cp {} output/ \;
+
+      - name: Upload Compiled Map
+        uses: actions/upload-artifact@v4
+        with:
+          name: gm_zen_bowls
+          path: output/gm_zen_bowls.bsp
