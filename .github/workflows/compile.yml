@@ -1,5 +1,5 @@
 
-name: Compile GM Zen Bowls Map
+name: Compile GM Zen Bowls
 
 on:
   push:
@@ -14,65 +14,63 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Wine and Dependencies
+      - name: Install Dependencies
         run: |
-          sudo dpkg --add-architecture i386
           sudo apt-get update
-          sudo apt-get install -y wine wine32 wine64 unzip wget
+          sudo apt-get install -y wget curl tar lib32gcc-s1
 
-      - name: Download Source SDK 2013 Tools
+      - name: Download Source Compiler
         run: |
           mkdir -p tools
-          echo "Prepare Source SDK 2013 compiler tools"
-          echo "VBSP, VVIS and VRAD are required."
+          wget -O tools/tools.tar.gz \
+            https://github.com/ficool2/misc_tools/releases/download/v1/tools++_linux.tar.gz
+          tar -xzf tools/tools.tar.gz -C tools
+          chmod -R +x tools
 
-      - name: Locate VMF Map
+      - name: Locate Compiler
+        run: |
+          VBSP=$(find tools -type f -iname 'vbspplusplus' | head -n 1)
+          VVIS=$(find tools -type f -iname 'vvisplusplus' | head -n 1)
+          VRAD=$(find tools -type f -iname 'vradplusplus' | head -n 1)
+
+          test -n "$VBSP" || exit 1
+          test -n "$VVIS" || exit 1
+          test -n "$VRAD" || exit 1
+
+          echo "VBSP=$VBSP" >> $GITHUB_ENV
+          echo "VVIS=$VVIS" >> $GITHUB_ENV
+          echo "VRAD=$VRAD" >> $GITHUB_ENV
+
+      - name: Locate Map
         run: |
           VMF=$(find . -name "gm_zen_bowls.vmf" | head -n 1)
-          if [ -z "$VMF" ]; then
-            echo "ERROR: gm_zen_bowls.vmf not found!"
-            exit 1
-          fi
-          echo "VMF_PATH=$VMF" >> $GITHUB_ENV
-          echo "Found map: $VMF"
+          test -n "$VMF" || exit 1
+          echo "VMF=$VMF" >> $GITHUB_ENV
 
-      - name: Check Compiler Tools
+      - name: Check Garry's Mod Game Files
         run: |
-          if [ ! -f "tools/bin/vbsp.exe" ]; then
-            echo "ERROR: VBSP compiler missing!"
-            echo "Place Source SDK compiler tools in tools/bin/"
+          if [ ! -f "garrysmod/gameinfo.txt" ]; then
+            echo "ERROR: Garry's Mod gameinfo.txt missing!"
+            echo "GMod game files are required."
             exit 1
           fi
 
       - name: Compile BSP
         run: |
-          mkdir -p output
-          wine tools/bin/vbsp.exe \
-            -game "$PWD" \
-            -threads 2 \
-            "$PWD/$VMF_PATH"
+          "$VBSP" -game "$PWD/garrysmod" "$PWD/$VMF"
 
       - name: Compile VIS
         run: |
-          wine tools/bin/vvis.exe \
-            -game "$PWD" \
-            -threads 2 \
+          "$VVIS" -game "$PWD/garrysmod" \
             "$PWD/gm_zen_bowls.bsp"
 
       - name: Compile RAD
         run: |
-          wine tools/bin/vrad.exe \
-            -game "$PWD" \
-            -threads 2 \
-            "$PWD/gm_zen_bowls.bsp"
+          "$VRAD" -game "$PWD/garrysmod" \
+            -ldr -final "$PWD/gm_zen_bowls.bsp"
 
-      - name: Move Compiled Map
-        run: |
-          mkdir -p output
-          find . -name "gm_zen_bowls.bsp" -exec cp {} output/ \;
-
-      - name: Upload Compiled Map
+      - name: Upload Map
         uses: actions/upload-artifact@v4
         with:
           name: gm_zen_bowls
-          path: output/gm_zen_bowls.bsp
+          path: gm_zen_bowls.bsp
